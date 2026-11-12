@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>地壺球專注力與執行能力評估</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: "Microsoft JhengHei", "PingFang HK", sans-serif; background-color: #f0f9ff; }
+    .btn-touch { min-height: 76px; transition: transform 0.1s; }
+    .btn-touch:active { transform: scale(0.98); }
+  </style>
+</head>
+<body class="p-4 md:p-8">
+  <div class="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl p-6 md:p-8 border-2 border-sky-100">
+    <!-- 標題 -->
+    <div class="text-center mb-6">
+      <div class="inline-block bg-sky-100 text-sky-800 px-4 py-1 rounded-full text-sm font-bold mb-2">
+        🥌 香港小學 SEN 支援小組
+      </div>
+      <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800">地壺球專注力與執行能力評估</h1>
+    </div>
+
+    <!-- 畫面 1：登入與選擇前後測 -->
+    <div id="setupScreen" class="space-y-5">
+      <div>
+        <label class="block text-slate-700 font-bold mb-2 text-lg">學生姓名</label>
+        <input id="studentName" type="text" placeholder="請輸入學生姓名（例如：陳大文）"
+               class="w-full p-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-sky-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-slate-700 font-bold mb-2 text-lg">班別（選填）</label>
+        <input id="studentClass" type="text" placeholder="例如：1A / 2B"
+               class="w-full p-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-sky-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-slate-700 font-bold mb-2 text-lg">選擇評估階段</label>
+        <div class="grid grid-cols-2 gap-4">
+          <button type="button" onclick="selectType('前測 (Pre-test)')" id="btnPre"
+                  class="p-4 rounded-2xl border-2 border-sky-500 bg-sky-50 text-sky-900 font-bold text-lg">
+            📝 前測 (Pre-test)
+          </button>
+          <button type="button" onclick="selectType('後測 (Post-test)')" id="btnPost"
+                  class="p-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-lg">
+            🏆 後測 (Post-test)
+          </button>
+        </div>
+      </div>
+
+      <button id="startBtn" onclick="startQuiz()" disabled
+              class="w-full py-4 mt-4 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 text-white font-bold text-xl rounded-2xl shadow-lg">
+        載入題庫中...
+      </button>
+    </div>
+
+    <!-- 畫面 2：作答區 -->
+    <div id="quizScreen" class="hidden space-y-6">
+      <div class="flex justify-between items-center text-sm font-bold text-slate-500">
+        <span id="progressText">第 1 / 6 題</span>
+        <span id="domainBadge" class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full">執行能力</span>
+      </div>
+
+      <div class="bg-sky-50 p-6 rounded-2xl text-center space-y-3 border border-sky-100">
+        <div id="qIcon" class="text-6xl">🥌</div>
+        <h2 id="qText" class="text-xl md:text-2xl font-bold text-slate-800 leading-relaxed">題目載入中</h2>
+        <button type="button" onclick="speakCurrentQuestion()"
+                class="inline-flex items-center gap-2 bg-white border-2 border-sky-400 text-sky-700 px-5 py-2 rounded-full font-bold shadow-sm active:bg-sky-100">
+          🔊 再聽一次題目
+        </button>
+      </div>
+
+      <div id="optionsContainer" class="space-y-3"></div>
+    </div>
+
+    <!-- 畫面 3：完成與儲存結果 -->
+    <div id="resultScreen" class="hidden text-center space-y-6 py-4">
+      <div class="text-7xl">🎉</div>
+      <h2 class="text-2xl font-extrabold text-slate-800">完成評估！做得好！</h2>
+      <p id="saveStatus" class="text-lg font-bold text-sky-600">正在自動傳送成績至 Google Sheet...</p>
+      <div class="bg-slate-50 p-5 rounded-2xl inline-block min-w-[240px]">
+        <div class="text-slate-500 text-sm">今次得分</div>
+        <div id="finalScore" class="text-4xl font-black text-sky-700 mt-1">0 / 0</div>
+      </div>
+      <div>
+        <button onclick="location.reload()"
+                class="px-8 py-4 bg-sky-600 text-white font-bold text-lg rounded-2xl shadow">
+          🔄 下一位學生作答
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ 請把下方引號內的網址換成你第一步取得的 Google Apps Script 網址 ⚠️
+    const API_URL = "https://script.google.com/macros/s/AKfycbxn1yzUInEqvAF46hN61bMNIPu71FBK-bkboKJkTKeFxg_HNYeKs_xYZQsTXaGSxagI/exec";
+
+    let questions = [];
+    let currentIdx = 0;
+    let score = 0;
+    let domainScores = {};
+    let selectedTestType = '前測 (Pre-test)';
+
+    // 載入題庫
+    window.onload = function() {
+      fetch(API_URL)
+        .then(res => res.json())
+        .then(data => {
+          questions = data;
+          const btn = document.getElementById('startBtn');
+          btn.disabled = false;
+          btn.innerText = '▶️ 開始評估';
+        })
+        .catch(err => {
+          alert('載入題庫失敗，請檢查網絡或 API 網址');
+          console.error(err);
+        });
+    };
+
+    function selectType(type) {
+      selectedTestType = type;
+      const isPre = type.includes('Pre');
+      document.getElementById('btnPre').className = isPre
+        ? 'p-4 rounded-2xl border-2 border-sky-500 bg-sky-50 text-sky-900 font-bold text-lg'
+        : 'p-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-lg';
+      document.getElementById('btnPost').className = !isPre
+        ? 'p-4 rounded-2xl border-2 border-emerald-500 bg-emerald-50 text-emerald-900 font-bold text-lg'
+        : 'p-4 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-lg';
+    }
+
+    function speakText(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'zh-HK';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function startQuiz() {
+      const name = document.getElementById('studentName').value.trim();
+      if (!name) {
+        alert('請先輸入學生姓名！');
+        return;
+      }
+      document.getElementById('setupScreen').classList.add('hidden');
+      document.getElementById('quizScreen').classList.remove('hidden');
+      renderQuestion();
+    }
+
+    function renderQuestion() {
+      const q = questions[currentIdx];
+      document.getElementById('progressText').innerText = `第 ${currentIdx + 1} / ${questions.length} 題`;
+      document.getElementById('domainBadge').innerText = q.domain;
+      document.getElementById('qIcon').innerText = q.icon;
+      document.getElementById('qText').innerText = q.text;
+
+      const container = document.getElementById('optionsContainer');
+      container.innerHTML = '';
+
+      q.options.forEach((opt, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-touch w-full p-4 bg-white hover:bg-sky-50 border-2 border-slate-200 hover:border-sky-400 rounded-2xl flex items-center gap-4 text-left shadow-sm';
+        btn.innerHTML = `
+          <span class="text-4xl">${opt.icon}</span>
+          <span class="text-lg md:text-xl font-bold text-slate-800">${opt.text}</span>
+        `;
+        btn.onclick = () => handleAnswer(idx);
+        container.appendChild(btn);
+      });
+
+      speakCurrentQuestion();
+    }
+
+    function speakCurrentQuestion() {
+      const q = questions[currentIdx];
+      const fullSpeech = `${q.text}。第一個選擇：${q.options[0].text}。第二個選擇：${q.options[1].text}。第三個選擇：${q.options[2].text}。`;
+      speakText(fullSpeech);
+    }
+
+    function handleAnswer(selectedIdx) {
+      window.speechSynthesis.cancel();
+      const q = questions[currentIdx];
+      if (selectedIdx === q.correctIndex) {
+        score++;
+        domainScores[q.domain] = (domainScores[q.domain] || 0) + 1;
+      }
+
+      currentIdx++;
+      if (currentIdx < questions.length) {
+        renderQuestion();
+      } else {
+        finishQuiz();
+      }
+    }
+
+    function finishQuiz() {
+      document.getElementById('quizScreen').classList.add('hidden');
+      document.getElementById('resultScreen').classList.remove('hidden');
+      document.getElementById('finalScore').innerText = `${score} / ${questions.length}`;
+      speakText('完成評估！做得好！');
+
+      const record = {
+        studentName: document.getElementById('studentName').value.trim(),
+        studentClass: document.getElementById('studentClass').value.trim(),
+        testType: selectedTestType,
+        score: score,
+        total: questions.length,
+        domainScores: domainScores
+      };
+
+      // 傳送資料到 Google Apps Script
+      fetch(API_URL, {
+        method: 'POST',
+        mode: 'no-cors', // 避免跨域阻擋
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record)
+      }).then(() => {
+        document.getElementById('saveStatus').innerText = '✅ 成績已成功自動儲存到 Google Sheet！';
+        document.getElementById('saveStatus').className = 'text-lg font-bold text-emerald-600';
+      }).catch(err => {
+        document.getElementById('saveStatus').innerText = '⚠️ 儲存時發生網絡錯誤，但作答已完成';
+        console.error(err);
+      });
+    }
+  </script>
+</body>
+</html>
